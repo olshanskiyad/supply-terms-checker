@@ -121,7 +121,7 @@
       const pend = h.pending.length
         ? `<div>Есть несогласованное изменение срока:</div>${proposalsHtml(h.pending)}`
         : '<div class="small muted">несогласованных изменений срока нет</div>';
-      return `<li style="margin-bottom:10px"><b>${esc(r.number)}</b>, ${esc(r.supplier || '')}: ${what}${h.unknown ? '' : srcLink(r.deadline.source)}${pend}</li>`;
+      return `<li style="margin-bottom:10px"><b>${esc(r.number)}</b>, ${esc(r.supplier || 'поставщик: нет данных')}: ${what}${h.unknown ? '' : srcLink(r.deadline.source)}${pend}</li>`;
     });
     show(`<b>Поставка раньше ${C.fromIso(dateIso)} на дату проверки ${C.fromIso(res.checkDate)}:</b><ul>${items.join('')}</ul>`);
   }

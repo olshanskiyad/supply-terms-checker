@@ -121,3 +121,73 @@ test('CRLF и BOM в файле не мешают разбору', () => {
   const docs = SAMPLE.map((d) => (d.name === '03_contract.txt' ? { ...d, text: '﻿' + d.text.replace(/\n/g, '\r\n') } : d));
   assert.equal(row(run(docs), 'STN-102').amount.value, '840000');
 });
+
+// Находки финальной проверки: на этих входах раньше выдавалось неверное значение.
+const STN102 = SAMPLE.find((d) => d.name === '03_contract.txt').text;
+
+test('один номер договора в двух файлах: требует проверки, порядок загрузки не решает', () => {
+  const changed = { name: 'stn102_v2.txt', text: STN102.replace('840 000', '900 000') };
+  for (const docs of [[...SAMPLE, changed], [changed, ...SAMPLE]]) {
+    const r = row(run(docs), 'STN-102');
+    assert.equal(r.amount.status, 'review');
+    assert.equal(r.amount.value, null);
+  }
+});
+
+test('«ДОП. СОГЛАШЕНИЕ» и «СПЕЦИФИКАЦИЯ к договору» не принимаются за договор', () => {
+  const dop = { name: 'dop3.txt', text: 'ДОП. СОГЛАШЕНИЕ № 3 К ДОГОВОРУ STN-101\nСтатус: подписано обеими сторонами 05.03.2026.\n1. Пункт 3.1 изложить в следующей редакции: «Поставщик обязуется поставить оборудование не позднее 20.05.2026».\n2. Настоящее соглашение вступает в силу 07.03.2026.' };
+  const spec = { name: 'spec.txt', text: 'СПЕЦИФИКАЦИЯ № 1 К ДОГОВОРУ STN-103\nПоставка запасных частей по перечню.' };
+  const res = run([spec, dop, ...SAMPLE]);
+  assert.equal(row(res, 'STN-101').deadline.value, '2026-05-20');
+  assert.equal(row(res, 'STN-101').deadline.changedBy, 'dop3.txt');
+  assert.equal(row(res, 'STN-103').deadline.value, '2026-04-30');
+  assert.equal(res.docs.find((d) => d.name === 'spec.txt').kind, 'unknown');
+});
+
+test('«заменить ... на ...» берёт новое значение, две суммы без слова изменения дают проверку', () => {
+  const dop = SAMPLE.find((d) => d.name === '02_amendment_signed.txt').text
+    .replace(/2\. Пункт 3\.1.*\n/, '2. Срок поставки «не позднее 15.04.2026» заменить на «не позднее 30.04.2026».\n');
+  const r = row(run(replaceIn('02_amendment_signed.txt', /[\s\S]*/, dop)), 'STN-101');
+  assert.equal(r.deadline.value, '2026-04-30');
+  const two = row(run(replaceIn('03_contract.txt', 'составляет 840 000 (восемьсот сорок тысяч) рублей, включая НДС', 'без НДС составляет 700 000 рублей, с НДС составляет 840 000 рублей')), 'STN-102');
+  assert.equal(two.amount.status, 'review');
+});
+
+test('копейки не теряются', () => {
+  const cases = [['840 000 руб. 50 коп.', '840000.5'], ['840 000,50 рублей', '840000.5'], ['840 000,00 рублей', '840000'], ['840\u202f000 рублей', '840000']];
+  for (const [text, want] of cases) {
+    const docs = replaceIn('03_contract.txt', '840 000 (восемьсот сорок тысяч) рублей', text);
+    assert.equal(row(run(docs), 'STN-102').amount.value, want, text);
+  }
+});
+
+test('новое поле одной записью в FIELDS: неустойка с цитатой', () => {
+  C.FIELDS.penalty = { label: 'Неустойка', anchors: [/неустойк.*?составляет/i], value: /составляет\s+(\d+(?:,\d+)?)\s*%/g, parse: (m) => m[1], format: (v) => `${v}%` };
+  try {
+    const res = run();
+    assert.equal(row(res, 'STN-101').penalty.value, '0,1');
+    assert.equal(row(res, 'STN-102').penalty.value, '0,05');
+    assert.equal(row(res, 'STN-103').penalty.status, 'no_data');
+  } finally {
+    delete C.FIELDS.penalty;
+  }
+});
+
+test('поставщик без кавычек (ИП) и номер договора кириллицей', () => {
+  const text = STN102.replace('STN-102', 'СТН-104').replace('ООО «Контур Электро»', 'ИП Сидоров П.И.');
+  const r = row(run([...SAMPLE, { name: 'ip.txt', text }]), 'СТН-104');
+  assert.equal(r.supplier, 'ИП Сидоров П.И.');
+  assert.equal(r.amount.value, '840000');
+});
+
+test('допсоглашение подписано одной стороной: не действует', () => {
+  const docs = replaceIn('02_amendment_signed.txt', 'подписано обеими сторонами 01.03.2026', 'подписано только поставщиком 01.03.2026');
+  const r = row(run(docs), 'STN-101');
+  assert.equal(r.deadline.value, '2026-04-15');
+  assert.ok(r.proposals.some((p) => p.reason === 'подписано одной стороной'));
+});
+
+test('срок в виде «Срок поставки: ДД.ММ.ГГГГ»', () => {
+  const docs = replaceIn('03_contract.txt', 'Поставщик обязуется поставить комплектующие не позднее 20.03.2026.', 'Срок поставки: 25.03.2026.');
+  assert.equal(row(run(docs), 'STN-102').deadline.value, '2026-03-25');
+});
