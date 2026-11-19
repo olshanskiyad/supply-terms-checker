@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сверка условий поставки</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #fff; --text: #1d1d1b; --muted: #6b6b66; --line: #e3e3de;
+          --accent: #2456c9; --ok: #1f7a3d; --warn: #9a5b00; --warn-bg: #fff4e0; --mark: #fff1a8; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 28px 0 10px; }
+  .lead { color: var(--muted); margin: 0 0 18px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+  button, select, input[type=date] { font: inherit; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  label.file { display: inline-block; padding: 6px 12px; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+  label.file input { display: none; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .val { font-weight: 600; white-space: nowrap; }
+  .nodata { color: var(--muted); font-weight: 600; }
+  .review { color: var(--warn); font-weight: 600; }
+  .changed { color: var(--ok); font-size: 13px; }
+  .quote { display: block; font-size: 13px; color: var(--muted); font-style: italic; max-width: 380px; border-left: 2px solid var(--line); padding-left: 8px; margin-top: 2px; }
+  a.src { display: block; font-size: 13px; color: var(--accent); margin-top: 4px; }
+  .prop { background: var(--warn-bg); border-radius: 6px; padding: 4px 8px; margin-bottom: 6px; font-size: 13px; }
+  .warn { background: var(--warn-bg); border: 1px solid #f0d9a8; border-radius: 10px; padding: 10px 14px; margin-top: 14px; }
+  .qbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .answer { margin-top: 12px; padding: 12px 14px; border-left: 3px solid var(--accent); background: #f2f5fc; border-radius: 6px; }
+  .docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+  .doc h3 { font-size: 14px; margin: 0 0 2px; }
+  .doc .meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .doc p { margin: 0 0 6px; font-size: 13px; padding: 2px 6px; border-radius: 4px; scroll-margin-top: 80px; }
+  .doc p .ln { color: var(--muted); display: inline-block; width: 22px; font-size: 11px; }
+  .doc p:target, .doc p.hl { background: var(--mark); outline: 2px solid #e5c100; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #eceae4; margin-left: 4px; }
+  .badge.in { background: #dff2e5; color: var(--ok); }
+  .badge.out { background: var(--warn-bg); color: var(--warn); }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Сверка условий договоров поставки</h1>
+  <p class="lead">Загрузите TXT-файлы: договоры, допсоглашения, письма. Таблица покажет сумму и срок поставки на дату проверки, у каждого значения есть цитата и переход к абзацу. Условия меняет только подписанное допсоглашение, вступившее в силу к дате проверки.</p>
+
+  <div class="panel controls">
+    <label class="file">Загрузить TXT<input id="files" type="file" accept=".txt,text/plain" multiple></label>
+    <button id="sample">Учебный комплект (6 файлов)</button>
+    <button id="clear">Очистить</button>
+    <span>Дата проверки <input id="checkDate" type="date" value="2026-03-10"></span>
+    <span id="loaded" class="muted small"></span>
+  </div>
+  <div id="warnings"></div>
+
+  <h2 id="table-title">Условия по договорам</h2>
+  <div id="table" class="table-wrap"></div>
+
+  <h2>Вопросы закупщика</h2>
+  <div class="panel">
+    <div class="qbtns" id="presets"></div>
+    <div class="controls small">
+      <span><select id="qField"></select> по договору <select id="qContract"></select> <button id="qAsk">Показать</button></span>
+      <span>Поставка раньше <input id="qBefore" type="date" value="2026-04-01"> <button id="qBeforeAsk">Показать</button></span>
+    </div>
+    <div id="answer"></div>
+  </div>
+
+  <h2>Исходные документы</h2>
+  <div id="docs" class="docs"></div>
+</main>
+<script src="checker.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
